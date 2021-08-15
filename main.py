@@ -197,7 +197,7 @@ def train(epoch):
     model.train()
     acc_loss = 0
     acc_nll = 0
-    acc_kl_theta_loss = 0
+    # acc_kl_theta_loss = 0
     acc_kl_eta_loss = 0
     acc_kl_alpha_loss = 0
     cnt = 0
@@ -214,7 +214,8 @@ def train(epoch):
         else:
             normalized_data_batch = data_batch
 
-        loss, nll, kl_alpha, kl_eta, kl_theta = model(data_batch, normalized_data_batch, times_batch, train_rnn_inp, args.num_docs_train)
+        # loss, nll, kl_alpha, kl_eta, kl_theta = model(data_batch, normalized_data_batch, times_batch, train_rnn_inp, args.num_docs_train)
+        loss, nll, kl_alpha, kl_eta = model(data_batch, normalized_data_batch, times_batch, train_rnn_inp, args.num_docs_train)
         loss.backward()
         if args.clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -222,7 +223,7 @@ def train(epoch):
 
         acc_loss += torch.sum(loss).item()
         acc_nll += torch.sum(nll).item()
-        acc_kl_theta_loss += torch.sum(kl_theta).item()
+        # acc_kl_theta_loss += torch.sum(kl_theta).item()
         acc_kl_eta_loss += torch.sum(kl_eta).item()
         acc_kl_alpha_loss += torch.sum(kl_alpha).item()
         cnt += 1
@@ -230,22 +231,26 @@ def train(epoch):
         if idx % args.log_interval == 0 and idx > 0:
             cur_loss = round(acc_loss / cnt, 2) 
             cur_nll = round(acc_nll / cnt, 2) 
-            cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
+            # cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
             cur_kl_eta = round(acc_kl_eta_loss / cnt, 2) 
             cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2) 
             lr = optimizer.param_groups[0]['lr']
-            print('Epoch: {} .. batch: {}/{} .. LR: {} .. KL_theta: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
-                epoch, idx, len(indices), lr, cur_kl_theta, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
+            # print('Epoch: {} .. batch: {}/{} .. LR: {} .. KL_theta: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
+            #     epoch, idx, len(indices), lr, cur_kl_theta, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
+            print('Epoch: {} .. batch: {}/{} .. LR: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
+                epoch, idx, len(indices), lr, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
     
     cur_loss = round(acc_loss / cnt, 2) 
     cur_nll = round(acc_nll / cnt, 2) 
-    cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
+    # cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
     cur_kl_eta = round(acc_kl_eta_loss / cnt, 2) 
     cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2) 
     lr = optimizer.param_groups[0]['lr']
     print('*'*100)
-    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
-            epoch, lr, cur_kl_theta, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
+    # print('Epoch----->{} .. LR: {} .. KL_theta: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
+    #         epoch, lr, cur_kl_theta, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
+    print('Epoch----->{} .. LR: {} .. KL_eta: {} .. KL_alpha: {} .. Rec_loss: {} .. NELBO: {}'.format(
+            epoch, lr, cur_kl_eta, cur_kl_alpha, cur_nll, cur_loss))
     print('*'*100)
 
 def visualize():
@@ -357,7 +362,9 @@ def get_completion_ppl(source):
                     normalized_data_batch = data_batch
 
                 eta_td = eta[times_batch.type('torch.LongTensor')]
-                theta = get_theta(eta_td, normalized_data_batch)
+                # theta = get_theta(eta_td, normalized_data_batch)
+                theta = eta_td
+
                 alpha_td = alpha[:, times_batch.type('torch.LongTensor'), :]
                 beta = model.get_beta(alpha_td).permute(1, 0, 2)
                 loglik = theta.unsqueeze(2) * beta
@@ -398,7 +405,8 @@ def get_completion_ppl(source):
                     normalized_data_batch_1 = data_batch_1
 
                 eta_td_1 = eta_1[times_batch_1.type('torch.LongTensor')]
-                theta = get_theta(eta_td_1, normalized_data_batch_1)
+                # theta = get_theta(eta_td_1, normalized_data_batch_1)
+                theta = eta_td
 
                 data_batch_2, times_batch_2 = data.get_batch(
                     tokens_2, counts_2, ind, args.vocab_size, args.emb_size, temporal=True, times=test_times)

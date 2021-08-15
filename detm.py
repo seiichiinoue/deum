@@ -24,11 +24,11 @@ class DETM(nn.Module):
         self.emsize = args.emb_size
         self.enc_drop = args.enc_drop
         self.eta_nlayers = args.eta_nlayers
-        self.t_drop = nn.Dropout(args.enc_drop)
+        # self.t_drop = nn.Dropout(args.enc_drop)
         self.delta = args.delta
         self.train_embeddings = args.train_embeddings
 
-        self.theta_act = self.get_activation(args.theta_act)
+        # self.theta_act = self.get_activation(args.theta_act)
 
         ## define the word embedding matrix \rho
         if args.train_embeddings:
@@ -44,14 +44,16 @@ class DETM(nn.Module):
         self.logsigma_q_alpha = nn.Parameter(torch.randn(args.num_topics, args.num_times, args.rho_size))
     
         ## define variational distribution for \theta_{1:D} via amortizartion... theta is K x D
-        self.q_theta = nn.Sequential(
-                    nn.Linear(args.vocab_size+args.num_topics, args.t_hidden_size), 
-                    self.theta_act,
-                    nn.Linear(args.t_hidden_size, args.t_hidden_size),
-                    self.theta_act,
-                )
-        self.mu_q_theta = nn.Linear(args.t_hidden_size, args.num_topics, bias=True)
-        self.logsigma_q_theta = nn.Linear(args.t_hidden_size, args.num_topics, bias=True)
+        # self.q_theta = nn.Sequential(
+        #             nn.Linear(args.vocab_size+args.num_topics, args.t_hidden_size), 
+        #             self.theta_act,
+        #             nn.Linear(args.t_hidden_size, args.t_hidden_size),
+        #             self.theta_act,
+        #         )
+        # self.mu_q_theta = nn.Linear(args.t_hidden_size, args.num_topics, bias=True)
+        # self.logsigma_q_theta = nn.Linear(args.t_hidden_size, args.num_topics, bias=True)
+
+        self.tmp = nn.Linear(args.num_topics, args.t_hidden_size)
 
         ## define variational distribution for \eta via amortizartion... eta is K x T
         self.q_eta_map = nn.Linear(args.vocab_size, args.eta_hidden_size)
@@ -125,18 +127,20 @@ class DETM(nn.Module):
         return alphas, kl_alpha.sum()
 
     def get_eta(self, rnn_inp): ## structured amortized inference
-        inp = self.q_eta_map(rnn_inp).unsqueeze(1)
+        inp = self.q_eta_map(rnn_inp).unsqueeze(1)  # torch.Size([31, 35108]) -> torch.Size([31, 200])
         hidden = self.init_hidden()
         output, _ = self.q_eta(inp, hidden)
         output = output.squeeze()
 
         etas = torch.zeros(self.num_times, self.num_topics).to(device)
+        thetas = torch.zeros(self.num_times, self.num_topics).to(device)
         kl_eta = []
 
         inp_0 = torch.cat([output[0], torch.zeros(self.num_topics,).to(device)], dim=0)
         mu_0 = self.mu_q_eta(inp_0)
         logsigma_0 = self.logsigma_q_eta(inp_0)
         etas[0] = self.reparameterize(mu_0, logsigma_0)
+        thetas[0] = F.softmax(etas[0].clone(), dim=-1)
 
         p_mu_0 = torch.zeros(self.num_topics,).to(device)
         logsigma_p_0 = torch.zeros(self.num_topics,).to(device)
@@ -152,23 +156,26 @@ class DETM(nn.Module):
             logsigma_p_t = torch.log(self.delta * torch.ones(self.num_topics,).to(device))
             kl_t = self.get_kl(mu_t, logsigma_t, p_mu_t, logsigma_p_t)
             kl_eta.append(kl_t)
-        kl_eta = torch.stack(kl_eta).sum()
-        return etas, kl_eta
+            
+            thetas[t] = F.softmax(etas[t].clone(), dim=-1)
 
-    def get_theta(self, eta, bows, times): ## amortized inference
-        """Returns the topic proportions.
-        """
-        eta_td = eta[times.type('torch.LongTensor')]
-        inp = torch.cat([bows, eta_td], dim=1)
-        q_theta = self.q_theta(inp)
-        if self.enc_drop > 0:
-            q_theta = self.t_drop(q_theta)
-        mu_theta = self.mu_q_theta(q_theta)
-        logsigma_theta = self.logsigma_q_theta(q_theta)
-        z = self.reparameterize(mu_theta, logsigma_theta)
-        theta = F.softmax(z, dim=-1)
-        kl_theta = self.get_kl(mu_theta, logsigma_theta, eta_td, torch.zeros(self.num_topics).to(device))
-        return theta, kl_theta
+        kl_eta = torch.stack(kl_eta).sum()
+        return thetas, kl_eta
+
+    # def get_theta(self, eta, bows, times): ## amortized inference
+    #     """Returns the topic proportions.
+    #     """
+    #     eta_td = eta[times.type('torch.LongTensor')]
+    #     inp = torch.cat([bows, eta_td], dim=1)
+    #     q_theta = self.q_theta(inp)
+    #     if self.enc_drop > 0:
+    #         q_theta = self.t_drop(q_theta)
+    #     mu_theta = self.mu_q_theta(q_theta)
+    #     logsigma_theta = self.logsigma_q_theta(q_theta)
+    #     z = self.reparameterize(mu_theta, logsigma_theta)
+    #     theta = F.softmax(z, dim=-1)
+    #     kl_theta = self.get_kl(mu_theta, logsigma_theta, eta_td, torch.zeros(self.num_topics).to(device))
+    #     return theta, kl_theta
 
     def get_beta(self, alpha):
         """Returns the topic matrix \beta of shape K x V
@@ -196,15 +203,20 @@ class DETM(nn.Module):
         coeff = num_docs / bsz 
         alpha, kl_alpha = self.get_alpha()
         eta, kl_eta = self.get_eta(rnn_inp)
-        theta, kl_theta = self.get_theta(eta, normalized_bows, times)
-        kl_theta = kl_theta.sum() * coeff
-
+        # theta, kl_theta = self.get_theta(eta, normalized_bows, times)
+        # kl_theta = kl_theta.sum() * coeff
+        theta = eta[times.type('torch.LongTensor')]
+        # print(theta.size()) # [batch_size, num_topic]
+        # theta = self.tmp(eta[times.type('torch.LongTensor')])
         beta = self.get_beta(alpha)
         beta = beta[times.type('torch.LongTensor')]
         nll = self.get_nll(theta, beta, bows)
+        # print(nll)
         nll = nll.sum() * coeff
-        nelbo = nll + kl_alpha + kl_eta + kl_theta
-        return nelbo, nll, kl_alpha, kl_eta, kl_theta
+        # nelbo = nll + kl_alpha + kl_eta + kl_theta
+        nelbo = nll + kl_alpha + kl_eta
+        # return nelbo, nll, kl_alpha, kl_eta, kl_theta
+        return nelbo, nll, kl_alpha, kl_eta
 
     def init_hidden(self):
         """Initializes the first hidden state of the RNN used as inference network for \eta.
