@@ -310,12 +310,15 @@ def _eta_helper(rnn_inp):
     output, _ = model.q_eta(inp, hidden)
     output = output.squeeze()
     etas = torch.zeros(model.num_times, model.num_topics).to(device)
+    thetas = torch.zeros(model.num_times, model.num_topics).to(device)
     inp_0 = torch.cat([output[0], torch.zeros(model.num_topics,).to(device)], dim=0)
     etas[0] = model.mu_q_eta(inp_0)
+    thetas[0] = F.softmax(etas[0].clone(), dim=-1)
     for t in range(1, model.num_times):
         inp_t = torch.cat([output[t], etas[t-1]], dim=0)
         etas[t] = model.mu_q_eta(inp_t)
-    return etas
+        thetas[t] = F.softmax(etas[t].clone(), dim=-1)
+    return thetas
 
 def get_eta(source):
     model.eval()
@@ -362,7 +365,6 @@ def get_completion_ppl(source):
                     normalized_data_batch = data_batch
 
                 eta_td = eta[times_batch.type('torch.LongTensor')]
-                # theta = get_theta(eta_td, normalized_data_batch)
                 theta = eta_td
 
                 alpha_td = alpha[:, times_batch.type('torch.LongTensor'), :]
@@ -405,7 +407,6 @@ def get_completion_ppl(source):
                     normalized_data_batch_1 = data_batch_1
 
                 eta_td_1 = eta_1[times_batch_1.type('torch.LongTensor')]
-                # theta = get_theta(eta_td_1, normalized_data_batch_1)
                 theta = eta_td
 
                 data_batch_2, times_batch_2 = data.get_batch(
